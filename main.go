@@ -1,34 +1,42 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
 
 type Actor interface {
-	Receive(msg interface{})
+	Receive(msg interface{}, context *ActorProp)
 }
 
 type ActorProp struct {
 	Context *System
 	name    string
 	box     chan interface{}
+	resp    chan interface{}
 	kill    chan bool
+	watch   chan string
+	parrent *ActorProp
 }
 
 func (a *ActorProp) start(ctx context.Context, actor Actor) {
-	for {
-		select {
-		case <-a.kill:
-			a.clean(true)
-			return
-		case msg := <-a.box:
-			actor.Receive(msg)
-		case <-ctx.Done():
-			a.clean(false)
-			return
+	go func() {
+		for {
+			select {
+			case <-a.kill:
+				a.notify()
+				a.clean(true)
+				return
+			case msg := <-a.box:
+				actor.Receive(msg, a)
+			case <-ctx.Done():
+				a.notify()
+				a.clean(false)
+				return
+			}
 		}
-	}
+	}()
 }
 
 type Message interface {
@@ -47,9 +55,9 @@ func (s *System) ActorOf(name string, val Actor) *ActorProp {
 	_, ok := interface{}(val).(Actor) // test does val implement Actor interfce
 
 	if ok {
-		key := join(name)
-		prop := newProp(name, s)
-		go prop.start(s.ctx, val)
+		key := join(s.Name, name)
+		prop := newProp(key, s)
+		prop.start(s.ctx, val)
 		s.Actors[key] = prop
 
 		return prop
@@ -70,10 +78,13 @@ func (m MyMessage) Params() map[string][]byte {
 	return nil
 }
 
-func (m MyActor) Receive(msg interface{}) {
+func (m MyActor) Receive(msg interface{}, context *ActorProp) {
 	switch conv := msg.(type) {
 	case MyMessage:
-		fmt.Println("Hello ", conv.Name())
+		fmt.Println("Hello ", conv.Name(), "From ", context.name)
+		context.Replay("Replay")
+	case string:
+		fmt.Println("Killed ", conv)
 	default:
 		fmt.Println("bla")
 	}
@@ -81,13 +92,28 @@ func (m MyActor) Receive(msg interface{}) {
 
 func main() {
 	system := NewSystem("TestSystem")
-	prop := system.ActorOf("MyActor", MyActor{})
 
-	prop.Tell(nil)
+	p1 := system.ActorOf("Parrent_Actor_1", MyActor{})
+	c1 := p1.ActorOf("Child_Actor_1", MyActor{})
+	c2 := p1.ActorOf("Child_Actor_2", MyActor{})
+	p1.Watch(c1, c2)
+
+	p2 := system.ActorOf("Parrent_Actor_2", MyActor{})
+	c3 := p2.ActorOf("Child_Actor_3", MyActor{})
+	c4 := p2.ActorOf("Child_Actor_4", MyActor{})
+	p2.Watch(c3, c4)
+
+	system.AllActors()
+
+	// p.Tell(MyMessage{})
+	p1.TellChildren(MyMessage{})
+	// fmt.Println(p.Resp())
+
+	// c1.Kill()
+	// c2.Kill()
 
 	time.Sleep(time.Second)
 
-	system.Terminate()
-
-	fmt.Println("hello world")
+	// system.AllActors()
+	system.Shutdown()
 }
