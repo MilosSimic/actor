@@ -6,14 +6,21 @@ import (
 	"time"
 )
 
+type Context struct {
+	context *System
+	sender  *ActorProp
+	msg     interface{}
+}
+
 type Actor interface {
-	Receive(msg interface{})
+	Receive(context *ActorProp, msg interface{})
 }
 
 type ActorProp struct {
 	Context *System
 	name    string
 	box     chan interface{}
+	resp    chan interface{}
 	kill    chan bool
 }
 
@@ -24,7 +31,7 @@ func (a *ActorProp) start(ctx context.Context, actor Actor) {
 			a.clean(true)
 			return
 		case msg := <-a.box:
-			actor.Receive(msg)
+			actor.Receive(a, msg)
 		case <-ctx.Done():
 			a.clean(false)
 			return
@@ -71,10 +78,11 @@ func (m MyMessage) Params() map[string][]byte {
 	return nil
 }
 
-func (m MyActor) Receive(msg interface{}) {
+func (m MyActor) Receive(context *ActorProp, msg interface{}) {
 	switch conv := msg.(type) {
 	case MyMessage:
 		fmt.Println("Hello ", conv.Name())
+		context.Replay("Replay")
 	default:
 		fmt.Println("bla")
 	}
@@ -84,7 +92,8 @@ func main() {
 	system := NewSystem("TestSystem")
 	prop := system.ActorOf("MyActor", MyActor{})
 
-	prop.Tell(nil)
+	prop.Tell(MyMessage{})
+	fmt.Println("Resp:", prop.Resp())
 
 	time.Sleep(time.Second)
 

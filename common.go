@@ -32,10 +32,19 @@ func (a *ActorProp) Tell(msg interface{}) {
 	a.box <- msg
 }
 
+func (a *ActorProp) Replay(msg interface{}) {
+	a.resp <- msg
+}
+
+func (a *ActorProp) Resp() interface{} {
+	return <-a.resp
+}
+
 func newProp(name string, system *System) *ActorProp {
 	return &ActorProp{
 		name:    name,
 		box:     make(chan interface{}),
+		resp:    make(chan interface{}),
 		kill:    make(chan bool),
 		Context: system,
 	}
