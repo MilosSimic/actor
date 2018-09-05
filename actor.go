@@ -38,6 +38,8 @@ func (a *ActorProp) start(ctx context.Context, actor Actor) {
 func (a *ActorProp) clean(remove bool) {
 	close(a.kill)
 	close(a.box)
+	close(a.resp)
+	close(a.watch)
 
 	if remove {
 		delete(a.Context.Actors, a.name)
